@@ -1,0 +1,6 @@
+Benchmarks between different LA libraries with and without GPU.
+
+Target platforms:
+Debian 10 and Ubuntu 18 
+AMD64 and ARM
+CUDA 10.1
