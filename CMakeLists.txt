@@ -64,4 +64,12 @@ if (CUDA_FOUND)
   set_source_files_properties (src/bench_cuda2d.cu PROPERTIES LANGUAGE CUDA)
   add_executable(bench_cuda2d src/bench_cuda2d.cu)
    target_link_libraries(bench_cuda2d PUBLIC ${Boost_LIBRARIES} Threads::Threads Eigen3::Eigen)
+
+  set_source_files_properties (src/comp3d.cu PROPERTIES LANGUAGE CUDA)
+  add_library(comp3d src/comp3d.cu)
+   target_link_libraries(comp3d PUBLIC ${Boost_LIBRARIES} Threads::Threads Eigen3::Eigen)
 endif()
+
+#  set_source_files_properties (src/bench_cuda3d.cu PROPERTIES LANGUAGE CUDA)
+  add_executable(bench_cuda3d src/bench_cuda3d.cpp)
+   target_link_libraries(bench_cuda3d PUBLIC ${Boost_LIBRARIES} Threads::Threads Eigen3::Eigen comp3d)

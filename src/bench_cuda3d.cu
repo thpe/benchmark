@@ -1,24 +1,31 @@
 #include <iostream>
 #include <chrono>
 #include <math.h>
-#include "cuda_2d.h"
+#include "comp3d.hpp"
+#include <Eigen/Eigen>
+
 using namespace std;
 
 int main(void)
 {
-  int N = 640 * 480;
+ 
+  int Nf = 256;
+  int N = 256 * 40 * 30;
   uint16_t *x;
   float *y;
+  float *c;
 //  dim3 blockSize (16,1,1);
-  dim3 numBlocks (40, 30, 1);
+//  dim3 numBlocks (40, 30, 1);
 
   int n = 40 * 30;
   float normfactor = 1.0f / 256.0f;
   
   auto start = std::chrono::system_clock::now ();
+  {
+  Comp3d c3d;
   // Allocate Unified Memory – accessible from CPU or GPU
-  cudaMallocManaged(&x, N*sizeof(uint16_t));
-  cudaMallocManaged(&y, n*sizeof(float));
+
+  c3d.alloc (Nf, 40, 30);
 
   std::cout << "reduce " << N << " elements " << " to " << n << ".\n";
   auto stop = std::chrono::system_clock::now ();
@@ -26,12 +33,9 @@ int main(void)
   std::cout << "alloc took " << dur.count () << " s " << std::endl;
   start = std::chrono::system_clock::now ();
   // initialize x and y arrays on the host
-  for (int i = 0; i < N; i++) {
-    x[i] = 1.0f;
-  }
-  for (int i = 0; i < n; i++) {
-    y[i] = 0.0f;
-  }
+  Eigen::Matrix< uint16_t, 480, 640 > mat;
+  mat.setOnes();
+  c3d.load(mat.data());
   stop = std::chrono::system_clock::now ();
   dur = stop - start;
   std::cout << "init took " << dur.count () << " s " << std::endl;
@@ -39,32 +43,19 @@ int main(void)
   auto tstart = std::chrono::system_clock::now ();
   start = std::chrono::system_clock::now ();
   // Run kernel on 1M elements on the GPU
-  reduce<<<n, 1>>>(N, x, y);
-  mulscalar<<<1, 256>>> (n, normfactor, y);
   stop = std::chrono::system_clock::now ();
   dur = stop - start;
   std::cout << "reduce took " << dur.count () << " s " << std::endl;
 
   start = std::chrono::system_clock::now ();
   // Wait for GPU to finish before accessing on host
-  cudaDeviceSynchronize();
-  stop = std::chrono::system_clock::now ();
   dur = stop - start;
   std::cout << "sync took " << dur.count () << " s " << std::endl;
   auto tstop = std::chrono::system_clock::now ();
   dur = tstop - tstart;
   std::cout << "total took " << dur.count () << " s " << std::endl;
 
-  // Check for errors (all values should be 3.0f)
-  float maxError = 0.0f;
-  for (int i = 0; i < n; i++) {
-    maxError = fmax(maxError, fabs(y[i]-1.0f));
   }
-  std::cout << "Max error: " << maxError << std::endl;
-
-  // Free memory
-  cudaFree(x);
-  cudaFree(y);
 
   return 0;
 }
