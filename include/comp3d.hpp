@@ -11,6 +11,7 @@ class Comp3d {
 
   void alloc (int nc, int nx, int ny);
   void load (uint16_t* data);
+  void loadCoeff (float* data);
   void print ();
   void run ();
   void y (float* y);

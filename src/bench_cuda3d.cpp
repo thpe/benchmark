@@ -10,12 +10,13 @@ using namespace std;
 int main(void)
 {
  
-  int Nf = 256;
-  int N = 256 * 40 * 30;
+  int Nf = 1024;
+  int N = 1024 * 40 * 30;
 //  float *y;
   float *c;
 
   std::vector< float > y (30 * 40);
+  std::vector< float > coeff (Nf, 1.0f);
   int n = 40 * 30;
   float normfactor = 1.0f / 256.0f;
   
@@ -37,30 +38,36 @@ int main(void)
   mat.setOnes();
   std::cout << "mat(0,0) " << mat(0,0) << std::endl;
   c3d.print ();
-  c3d.load(mat.data());
-  c3d.print ();
+  c3d.loadCoeff (coeff.data());
   stop = std::chrono::system_clock::now ();
   dur = stop - start;
   std::cout << "init took " << dur.count () << " s " << std::endl;
 
   auto tstart = std::chrono::system_clock::now ();
   start = std::chrono::system_clock::now ();
-  c3d.run ();
+  for (int i = 0; i < Nf; i++) {
+    c3d.load(mat.data());
+  }
   c3d.print ();
-
-  // run
-  //
-  //
   stop = std::chrono::system_clock::now ();
   dur = stop - start;
   std::cout << "reduce took " << dur.count () << " s " << std::endl;
 
-  start = std::chrono::system_clock::now ();
-  // Wait for GPU to finish before accessing on host
 
+  start = std::chrono::system_clock::now ();
+  for (int i = 0; i < Nf; i++) {
+    c3d.run ();
+  }
+  c3d.print ();
+  stop = std::chrono::system_clock::now ();
+  dur = stop - start;
+  std::cout << "filter took " << dur.count () << " s " << std::endl;
+
+  start = std::chrono::system_clock::now ();
   c3d.y (&y[0]);
   dur = stop - start;
   std::cout << "sync took " << dur.count () << " s " << std::endl;
+
   auto tstop = std::chrono::system_clock::now ();
   dur = tstop - tstart;
   std::cout << "total took " << dur.count () << " s " << std::endl;

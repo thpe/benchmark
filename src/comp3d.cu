@@ -8,27 +8,28 @@ struct Comp3d::impl {
   int nx_;
   int ny_;
   int nc_;
-  bool allocated;
-  struct cudaPitchedPtr in;
-  struct cudaPitchedPtr y_;
-  struct cudaPitchedPtr coeff;
-  struct cudaPitchedPtr x;
+  bool allocated_;
+  uint16_t* in_;
+  float*    y_;
+  float*    coeff_;
+  float*    x_;
+  int off_;
 
-  struct cudaExtent in_extent;
-  struct cudaExtent y_extent;
-  struct cudaExtent coeff_extent;
-  struct cudaExtent x_extent;
-
-  cudaMemcpy3DParms in_params;
-  cudaMemcpy3DParms out_params;
 
   void alloc (int nc, int nx, int ny);
   void load (uint16_t* data);
+  void loadCoeff (float* coeff);
   void reduce (int idx);
   void run ();
   void y (float* p);
   void dealloc ();
   void print ();
+
+  void inc_off ();
+  int sizeX () const {return nx_ * ny_ * nc_ * sizeof(float);}
+  int sizeY () const {return nx_ * ny_ * sizeof (float);}
+  int sizeIn() const {return nx_ * ny_ * 16 * 16 * sizeof (uint16_t);}
+  int sizeCoeff () const {return nc_ * sizeof (float);}
 };
 
 Comp3d::Comp3d() : 
@@ -81,6 +82,12 @@ Comp3d::load (uint16_t* data)
 }
 
 void
+Comp3d::loadCoeff (float* coeff)
+{
+  d_ptr_->loadCoeff (coeff);
+}
+
+void
 Comp3d::print ()
 {
   d_ptr_->print ();
@@ -89,65 +96,61 @@ Comp3d::print ()
 void
 Comp3d::impl::alloc (int nc, int nx, int ny)
 {
-  std::cout << "alloc...";
-  x_extent = make_cudaExtent(nc*sizeof(float), nx, ny);
-  in_extent = make_cudaExtent(1*sizeof(uint16_t), nx * 16, ny * 16);
-  y_extent = make_cudaExtent(nx*sizeof(float), ny, 1);
-  coeff_extent = make_cudaExtent(nc*sizeof(float), 1, 1);
-  cudaChk(cudaMalloc3D (&x,     x_extent));
-  cudaChk(cudaMalloc3D (&in,    in_extent));
-  cudaChk(cudaMalloc3D (&y_,    y_extent));
-  cudaChk(cudaMalloc3D (&coeff, coeff_extent));
-  cudaChk(cudaMemset3D (x,     0.0f, x_extent));
-  cudaChk(cudaMemset3D (in,    0u,   in_extent));
-  cudaChk(cudaMemset3D (y_,    0.0f, y_extent));
-  cudaChk(cudaMemset3D (coeff, 0.0f, coeff_extent));
-  allocated = true;
-
-  in_params        = {0};
-  in_params.kind   = cudaMemcpyHostToDevice;
-  in_params.dstPtr = in;
-  in_params.srcPos = make_cudaPos(0,0,0);
-  in_params.dstPos = make_cudaPos(0,0,0);
-  in_params.extent = in_extent;
-
-  out_params        = {0};
-  out_params.kind   = cudaMemcpyDeviceToHost;
-  out_params.srcPtr = y_;
-  out_params.srcPos = make_cudaPos(0,0,0);
-  out_params.dstPos = make_cudaPos(0,0,0);
-  out_params.extent = y_extent;
-
   nx_ = nx;
   ny_ = ny;
   nc_ = nc;
-  
-  std::cout << "done.\n";
+  off_ = 0;
+  std::cout << "alloc...";
+  cudaChk(cudaMalloc (&x_,     sizeX ()));
+  cudaChk(cudaMalloc (&in_,    sizeIn ()));
+  cudaChk(cudaMalloc (&y_,     sizeY ()));
+  cudaChk(cudaMalloc (&coeff_, sizeCoeff()));
+  cudaChk(cudaMemset (x_,     0.0f, sizeX ()));
+  cudaChk(cudaMemset (in_,    0u,   sizeIn ()));
+  cudaChk(cudaMemset (y_,     0.0f, sizeY ()));
+  cudaChk(cudaMemset (coeff_, 0.0f, sizeCoeff()));
+  allocated_ = true;
 }
 
 void
 Comp3d::impl::print ()
 {
-  print_int<<< 1, 1 >>> (480, 640, 1, in);
-  print_int<<< 1, 1 >>> (30, 40, 1, y_);
+  print_u16<<< 1, 1 >>> (480, 640, 1, in_);
+  print_f32<<< 1, 1 >>> (30, 40, 1, y_);
+}
+
+void
+Comp3d::impl::loadCoeff (float* coeff)
+{
+  cudaChk(cudaMemcpy (coeff_, coeff, sizeCoeff(), cudaMemcpyHostToDevice));
 }
 
 void
 Comp3d::impl::load (uint16_t* data)
 {
-  in_params.srcPtr = make_cudaPitchedPtr(data, 2, 1, 640);
-  std::cout << "val " << data[0] << "\n";
-  cudaChk(cudaMemcpy3D (&in_params));
+  cudaChk(cudaMemcpy (in_, data, sizeIn(), cudaMemcpyHostToDevice));
+  dim3 gdim (nx_, ny_, 1);
+  dim3 bdim (1, 1, 1);
+  in_reduce<<< gdim, bdim >>> (nc_, off_, in_, x_);
+  inc_off ();
 }
 
 void
 Comp3d::impl::run (void)
 {
-    dim3 gdim (30, 40, 1);
-    dim3 bdim (1, 1, 1);
-    in_reduce<<< gdim, bdim >>> (1, 0, (uint16_t*)in.ptr, (float*)y_.ptr);
+  dim3 gdim (1, nx_, ny_);
+  dim3 bdim (1, 1, 1);
+  filter<<< gdim, bdim >>> (nc_, x_, coeff_, y_);
 }
 
+void
+Comp3d::impl::inc_off ()
+{
+  off_++;
+  if (off_ >= nc_) {
+    off_ = 0;
+  }
+}
 
 std::ostream& operator<<(std::ostream& os, const cudaExtent& p)
 {
@@ -173,20 +176,19 @@ std::ostream& operator<<(std::ostream& os, const cudaMemcpy3DParms& p)
 void
 Comp3d::impl::y (float* y)
 {
-  out_params.dstPtr = make_cudaPitchedPtr(y, 512, nx_ * sizeof(float), ny_);
-  std::cout << out_params << std::endl;
-  cudaChk(cudaMemcpy3D (&out_params));
+  std::cout << std::hex << y << ", " << y_ << ", " << std::dec <<  sizeY () <<  std::endl;
+  cudaChk(cudaMemcpy (y, y_, sizeY (), cudaMemcpyDeviceToHost));
 }
 
 void
 Comp3d::impl::dealloc ()
 {
   std::cout << "dealloc...";
-  cudaFree(x.ptr);
-  cudaFree(in.ptr);
-  cudaFree(y_.ptr);
-  cudaFree(coeff.ptr);
-  allocated = false;
+  cudaFree(x_);
+  cudaFree(in_);
+  cudaFree(y_);
+  cudaFree(coeff_);
+  allocated_ = false;
   std::cout << "done.\n";
 }
 
