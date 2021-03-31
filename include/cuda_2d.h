@@ -36,6 +36,26 @@ void mulscalar(int n, float s, float *x)
   }
 }
 
+__global__
+void matmul(float* a, float* b, int n, float* c)
+{
+  int row = blockIdx.x * blockDim.x + threadIdx.x;
+  int col = blockIdx.y * blockDim.y + threadIdx.y;
+
+  int idx_c = col * gridDim.x * blockDim.x + row;
+
+  int idx_a  = row;
+  int idx_b  = col * n;
+  int step_a = gridDim.x * blockDim.x;
+  int step_b = 1;
+  c[idx_c] = 0;
+  for (int i = 0; i < n; i++) {
+    c[idx_c] += a[idx_a] * b[idx_b];
+    idx_a    += step_a;
+    idx_b    += step_b;
+  }
+}
+
 
 #if 0
 __global__

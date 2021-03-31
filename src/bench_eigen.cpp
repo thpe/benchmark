@@ -19,7 +19,7 @@ int main (void)
   std::cout << "init took " << dur.count () << " s " << std::endl;
 
   double dursum = 0.0;
-  int runs = 16;
+  int runs = 128;
 
   auto tstart = std::chrono::system_clock::now ();
 
